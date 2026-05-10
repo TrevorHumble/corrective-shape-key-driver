@@ -9,7 +9,7 @@
 bl_info = {
     "name": "Corrective Shape Key Drivers",
     "author": "Paradise Pictures",
-    "version": (1, 4, 0),
+    "version": (1, 5, 0),
     "blender": (4, 5, 0),
     "location": "View3D > Sidebar > Corrective SK",
     "description": (
@@ -654,6 +654,51 @@ class CSK_OT_RecapturePoint(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class CSK_OT_PrepareShapeKeys(bpy.types.Operator):
+    bl_idname = "corrective_sk.prepare_shape_keys"
+    bl_label = "Prepare Shape Keys"
+    bl_description = (
+        "Create a Basis key and a shape key named after the selected bone. "
+        "Mirrored variants are created automatically for bones with "
+        ".l / .r, _L / _R, or similar naming"
+    )
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        props = context.scene.corrective_sk
+        if not props.mesh_object or not props.bone_name:
+            return False
+        sk = props.mesh_object.data.shape_keys
+        return not (sk and props.bone_name in sk.key_blocks)
+
+    def execute(self, context):
+        props = context.scene.corrective_sk
+        mesh_obj = props.mesh_object
+        bone_name = props.bone_name
+
+        if not mesh_obj.data.shape_keys:
+            mesh_obj.shape_key_add(name="Basis", from_mix=False)
+
+        sk = mesh_obj.data.shape_keys
+        created = []
+
+        if bone_name not in sk.key_blocks:
+            mesh_obj.shape_key_add(name=bone_name, from_mix=False)
+            created.append(bone_name)
+
+        mirrored_bone = bpy.utils.flip_name(bone_name)
+        if mirrored_bone != bone_name and mirrored_bone not in sk.key_blocks:
+            mesh_obj.shape_key_add(name=mirrored_bone, from_mix=False)
+            created.append(mirrored_bone)
+
+        props.shape_key_name = bone_name
+
+        if created:
+            self.report({'INFO'}, f"Created: {', '.join(created)}")
+        return {'FINISHED'}
+
+
 class CSK_OT_GenerateDriver(bpy.types.Operator):
     bl_idname = "corrective_sk.generate_driver"
     bl_label = "Generate Driver"
@@ -1043,7 +1088,7 @@ class CSK_PT_MainPanel(bpy.types.Panel):
                     props.mesh_object.data.shape_keys, "key_blocks",
                     text="Shape Key",
                 )
-            else:
+            elif not props.bone_name:
                 row = col.row()
                 row.alert = True
                 row.label(text="Add shape keys in Properties > Object Data",
@@ -1058,6 +1103,14 @@ class CSK_PT_MainPanel(bpy.types.Panel):
                 props.armature.pose, "bones",
                 text="Bone",
             )
+
+        # --- Prepare Shape Keys button ---
+        if props.mesh_object and props.bone_name:
+            sk = props.mesh_object.data.shape_keys
+            if not (sk and props.bone_name in sk.key_blocks):
+                layout.separator()
+                layout.operator("corrective_sk.prepare_shape_keys",
+                                icon='ADD')
 
         layout.separator()
         layout.label(text="Axis:")
@@ -1154,6 +1207,7 @@ classes = (
     CSK_OT_CapturePoint,
     CSK_OT_RemovePoint,
     CSK_OT_RecapturePoint,
+    CSK_OT_PrepareShapeKeys,
     CSK_OT_GenerateDriver,
     CSK_OT_RemoveDriver,
     CSK_OT_MirrorDriver,
