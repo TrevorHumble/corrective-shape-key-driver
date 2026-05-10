@@ -1,8 +1,8 @@
 # Corrective Shape Key Drivers
 
-**Version 1.5.2** | Blender 4.5+
+**Version 1.6.0** | Blender 4.5+
 
-A Blender addon that creates corrective shape key drivers from evaluated bone positions. Works with IK, FK, and constraints — and includes bake-to-keyframes for game engine export.
+A Blender addon that creates corrective shape key drivers from evaluated bone positions. Works with IK, FK, and constraints.
 
 ![Sidebar panel](docs/screenshot.png)
 <!-- Replace with an actual screenshot of the View3D sidebar panel -->
@@ -17,7 +17,6 @@ A Blender addon that creates corrective shape key drivers from evaluated bone po
 - Capture and recapture control points live from the current pose
 - **Auto-prepare shape keys from bone name** — one click creates Basis + bone-named key + mirrored variant, no manual setup needed
 - Mirror driver to the opposite side (`.l` ↔ `.r`) in one click — automatically creates and names the mirrored shape key if needed, and mirrors vertex offsets
-- Bake all driven shape keys to per-frame keyframes for Unity / Unreal / Godot export
 
 ---
 
@@ -62,12 +61,6 @@ Add more control points between neutral and full-on for a smoother curve.
 ### Mirroring
 
 Click **Mirror to Other Side** to duplicate the driver setup to the opposite side. The operator automatically creates the mirrored shape key (from Basis) if it doesn't exist, renames unsuffixed shape keys by inferring the side from the bone name, and mirrors the vertex offsets across X. The bone must use `.l` / `.r` (or `.L` / `.R`, `_l` / `_r`, `.left` / `.right`) naming.
-
-### Game engine export
-
-1. Click **Bake to Keyframes** and set your frame range.
-2. The addon evaluates the driver at every frame and writes keyframes.
-3. Drivers are removed after baking so the file exports cleanly to Unity, Unreal, or Godot.
 
 ---
 
