@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+*.blend1
+*.blend2
+*.swp
+.DS_Store
+Thumbs.db
+.ruff_cache/
+.mypy_cache/
