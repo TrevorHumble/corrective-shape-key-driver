@@ -38,7 +38,7 @@ from bpy.props import (
 # Property Groups
 # ---------------------------------------------------------------------------
 
-class CSK_ControlPoint(bpy.types.PropertyGroup):
+class CSK_PG_ControlPoint(bpy.types.PropertyGroup):
     """A single captured control point: normalized bone position -> shape key value."""
     norm_value: FloatProperty(
         name="Bone Position",
@@ -72,7 +72,7 @@ def _poll_armature(self, obj):
     return obj.type == 'ARMATURE'
 
 
-class CSK_Properties(bpy.types.PropertyGroup):
+class CSK_PG_Properties(bpy.types.PropertyGroup):
     """Main addon state, stored on the Scene."""
     mesh_object: PointerProperty(
         type=bpy.types.Object,
@@ -107,7 +107,7 @@ class CSK_Properties(bpy.types.PropertyGroup):
         ],
         default='2',
     )
-    control_points: CollectionProperty(type=CSK_ControlPoint)
+    control_points: CollectionProperty(type=CSK_PG_ControlPoint)
     active_point_index: IntProperty()
 
 
@@ -919,8 +919,8 @@ class CSK_PT_MainPanel(bpy.types.Panel):
 # ---------------------------------------------------------------------------
 
 classes = (
-    CSK_ControlPoint,
-    CSK_Properties,
+    CSK_PG_ControlPoint,
+    CSK_PG_Properties,
     CSK_UL_ControlPointList,
     CSK_OT_CapturePoint,
     CSK_OT_RemovePoint,
@@ -937,7 +937,7 @@ classes = (
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
-    bpy.types.Scene.corrective_sk = PointerProperty(type=CSK_Properties)
+    bpy.types.Scene.corrective_sk = PointerProperty(type=CSK_PG_Properties)
 
 
 def unregister():
