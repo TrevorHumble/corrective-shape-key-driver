@@ -613,8 +613,12 @@ class CSK_OT_RemoveDriver(bpy.types.Operator):
 class CSK_OT_MirrorDriver(bpy.types.Operator):
     bl_idname = "corrective_sk.mirror_driver"
     bl_label = "Mirror to Other Side"
-    bl_description = ("Mirror the driver setup to the opposite side "
-                      "(.l <-> .r)")
+    bl_description = (
+        "Mirror this driver to the opposite side. "
+        "Requires the bone AND shape key to both use .l / .r naming "
+        "(e.g. 'arm.l' and 'corrective.l'). "
+        "The mirrored shape key must already exist on the mesh"
+    )
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
