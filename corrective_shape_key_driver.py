@@ -9,7 +9,7 @@
 bl_info = {
     "name": "Corrective Shape Key Drivers",
     "author": "Paradise Pictures",
-    "version": (1, 3, 0),
+    "version": (1, 4, 0),
     "blender": (4, 5, 0),
     "location": "View3D > Sidebar > Corrective SK",
     "description": (
@@ -402,6 +402,143 @@ def _has_existing_driver(props):
     return False
 
 
+def rename_shape_key_with_drivers(mesh_obj, old_name, new_name):
+    """Rename a shape key and update any drivers that reference it by name.
+
+    Drivers use string data paths like ``key_blocks["name"].value``.
+    This removes each matching driver, renames the shape key, then
+    re-creates the drivers with the updated path — preserving variables,
+    expressions, and all settings.
+
+    Returns True on success, False if the shape key was not found.
+    """
+    shape_keys = mesh_obj.data.shape_keys
+    if not shape_keys or old_name not in shape_keys.key_blocks:
+        return False
+    if old_name == new_name:
+        return True
+
+    saved_drivers = []
+    if shape_keys.animation_data and shape_keys.animation_data.drivers:
+        old_token = f'key_blocks["{old_name}"]'
+        for fc in list(shape_keys.animation_data.drivers):
+            if old_token not in fc.data_path:
+                continue
+            driver = fc.driver
+            info = {
+                'new_data_path': fc.data_path.replace(
+                    old_token, f'key_blocks["{new_name}"]'),
+                'type': driver.type,
+                'expression': driver.expression,
+                'variables': [],
+            }
+            for var in driver.variables:
+                var_info = {
+                    'name': var.name,
+                    'type': var.type,
+                    'targets': [],
+                }
+                for target in var.targets:
+                    var_info['targets'].append({
+                        'id': target.id,
+                        'id_type': target.id_type,
+                        'data_path': target.data_path,
+                        'bone_target': target.bone_target,
+                        'transform_type': target.transform_type,
+                        'transform_space': target.transform_space,
+                        'rotation_mode': target.rotation_mode,
+                    })
+                info['variables'].append(var_info)
+            saved_drivers.append(info)
+            shape_keys.driver_remove(fc.data_path)
+
+    shape_keys.key_blocks[old_name].name = new_name
+
+    for info in saved_drivers:
+        fcurve = shape_keys.driver_add(info['new_data_path'])
+        driver = fcurve.driver
+        driver.type = info['type']
+        driver.expression = info['expression']
+        for var_info in info['variables']:
+            var = driver.variables.new()
+            var.name = var_info['name']
+            var.type = var_info['type']
+            for i, target_info in enumerate(var_info['targets']):
+                if i < len(var.targets):
+                    t = var.targets[i]
+                    t.id_type = target_info['id_type']
+                    t.id = target_info['id']
+                    t.data_path = target_info['data_path']
+                    t.bone_target = target_info['bone_target']
+                    t.transform_type = target_info['transform_type']
+                    t.transform_space = target_info['transform_space']
+                    t.rotation_mode = target_info['rotation_mode']
+    return True
+
+
+def _infer_suffix_pair(bone_name):
+    """Return the (left, right) suffix pair matching the bone's naming style."""
+    for left, right in [
+        ('.l', '.r'), ('.L', '.R'),
+        ('_l', '_r'), ('_L', '_R'),
+        ('.left', '.right'), ('.Left', '.Right'),
+        ('.LEFT', '.RIGHT'),
+    ]:
+        if bone_name.endswith(left) or bone_name.endswith(right):
+            return (left, right)
+    return ('.l', '.r')
+
+
+def _mirror_shape_key_data(mesh_obj, source_name, target_name):
+    """Copy vertex offsets from *source* to *target*, flipped across X.
+
+    Returns the number of vertices that could not be matched.
+    """
+    from mathutils.kdtree import KDTree
+
+    shape_keys = mesh_obj.data.shape_keys
+    basis = shape_keys.reference_key
+    source = shape_keys.key_blocks[source_name]
+    target = shape_keys.key_blocks[target_name]
+
+    n = len(mesh_obj.data.vertices)
+    basis_cos = [0.0] * (n * 3)
+    source_cos = [0.0] * (n * 3)
+    basis.data.foreach_get("co", basis_cos)
+    source.data.foreach_get("co", source_cos)
+
+    kd = KDTree(n)
+    for i in range(n):
+        kd.insert((basis_cos[i*3], basis_cos[i*3+1], basis_cos[i*3+2]), i)
+    kd.balance()
+
+    target_cos = list(basis_cos)
+    max_dim = max(mesh_obj.dimensions) if mesh_obj.dimensions.length > 0 else 1.0
+    threshold = max(1e-5, max_dim * 0.0001)
+    unmatched = 0
+
+    for i in range(n):
+        dx = source_cos[i*3]   - basis_cos[i*3]
+        dy = source_cos[i*3+1] - basis_cos[i*3+1]
+        dz = source_cos[i*3+2] - basis_cos[i*3+2]
+        if abs(dx) < 1e-10 and abs(dy) < 1e-10 and abs(dz) < 1e-10:
+            continue
+
+        mirror_pos = (-basis_cos[i*3], basis_cos[i*3+1], basis_cos[i*3+2])
+        _co, j, dist = kd.find(mirror_pos)
+        if dist > threshold:
+            unmatched += 1
+            continue
+
+        target_cos[j*3]   = basis_cos[j*3]   - dx
+        target_cos[j*3+1] = basis_cos[j*3+1] + dy
+        target_cos[j*3+2] = basis_cos[j*3+2] + dz
+
+    target.data.foreach_set("co", target_cos)
+    mesh_obj.data.update()
+    return unmatched
+
+
 # ---------------------------------------------------------------------------
 # Operators
 # ---------------------------------------------------------------------------
@@ -614,12 +751,21 @@ class CSK_OT_MirrorDriver(bpy.types.Operator):
     bl_idname = "corrective_sk.mirror_driver"
     bl_label = "Mirror to Other Side"
     bl_description = (
-        "Mirror this driver to the opposite side. "
-        "Requires the bone AND shape key to both use .l / .r naming "
-        "(e.g. 'arm.l' and 'corrective.l'). "
-        "The mirrored shape key must already exist on the mesh"
+        "Mirror this driver and shape key data to the opposite side. "
+        "Automatically creates and names the mirrored shape key if needed "
+        "(requires the bone to use .l / .r naming)"
     )
     bl_options = {'REGISTER', 'UNDO'}
+
+    side: EnumProperty(
+        name="This Side Is",
+        description="Which side the current shape key corrects",
+        items=[
+            ('LEFT', 'Left', 'This corrective is for the left side'),
+            ('RIGHT', 'Right', 'This corrective is for the right side'),
+        ],
+        default='LEFT',
+    )
 
     @classmethod
     def poll(cls, context):
@@ -630,47 +776,92 @@ class CSK_OT_MirrorDriver(bpy.types.Operator):
         if len(props.control_points) < 2:
             return False
         mirrored_bone = bpy.utils.flip_name(props.bone_name)
-        mirrored_sk = bpy.utils.flip_name(props.shape_key_name)
-        return (mirrored_bone != props.bone_name
-                and mirrored_sk != props.shape_key_name)
+        return mirrored_bone != props.bone_name
+
+    def invoke(self, context, event):
+        props = context.scene.corrective_sk
+
+        if bpy.utils.flip_name(props.shape_key_name) != props.shape_key_name:
+            return self.execute(context)
+
+        bone = props.bone_name
+        for left, right in [
+            ('.l', '.r'), ('.L', '.R'),
+            ('_l', '_r'), ('_L', '_R'),
+            ('.left', '.right'), ('.Left', '.Right'),
+            ('.LEFT', '.RIGHT'),
+        ]:
+            if bone.endswith(left):
+                self.side = 'LEFT'
+                return self.execute(context)
+            if bone.endswith(right):
+                self.side = 'RIGHT'
+                return self.execute(context)
+
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        self.layout.prop(self, "side", expand=True)
 
     def execute(self, context):
         props = context.scene.corrective_sk
+        mesh_obj = props.mesh_object
+        sk_name = props.shape_key_name
+        bone_name = props.bone_name
 
-        mirrored_bone = bpy.utils.flip_name(props.bone_name)
-        mirrored_sk = bpy.utils.flip_name(props.shape_key_name)
-
-        if mirrored_bone == props.bone_name:
+        mirrored_bone = bpy.utils.flip_name(bone_name)
+        if mirrored_bone == bone_name:
             self.report(
                 {'ERROR'},
-                f"Bone '{props.bone_name}' has no mirrored counterpart. "
-                f"Rename it with a .l / .r suffix (e.g. 'arm.l' / 'arm.r').",
-            )
-            return {'CANCELLED'}
-
-        if mirrored_sk == props.shape_key_name:
-            self.report(
-                {'ERROR'},
-                f"Shape key '{props.shape_key_name}' has no mirrored counterpart. "
-                f"Rename it with a .l / .r suffix (e.g. 'corrective.l' / 'corrective.r').",
+                f"Bone '{bone_name}' has no mirrored counterpart. "
+                f"Rename it with a .l / .r suffix.",
             )
             return {'CANCELLED'}
 
         if props.armature.pose.bones.get(mirrored_bone) is None:
-            self.report({'ERROR'},
-                        f"Mirrored bone '{mirrored_bone}' not found in armature")
-            return {'CANCELLED'}
-
-        sk = props.mesh_object.data.shape_keys
-        if not sk or mirrored_sk not in sk.key_blocks:
             self.report(
                 {'ERROR'},
-                f"Mirrored shape key '{mirrored_sk}' not found. "
-                f"Create it first, then mirror.",
-            )
+                f"Mirrored bone '{mirrored_bone}' not found in armature")
             return {'CANCELLED'}
 
-        # For X axis negate the normalized value (opposite side)
+        sk = mesh_obj.data.shape_keys
+        if not sk:
+            self.report({'ERROR'}, "Mesh has no shape keys")
+            return {'CANCELLED'}
+
+        mirrored_sk = bpy.utils.flip_name(sk_name)
+        actions = []
+
+        if mirrored_sk == sk_name:
+            left_sfx, right_sfx = _infer_suffix_pair(bone_name)
+            if self.side == 'LEFT':
+                new_name = sk_name + left_sfx
+                mirrored_sk = sk_name + right_sfx
+            else:
+                new_name = sk_name + right_sfx
+                mirrored_sk = sk_name + left_sfx
+
+            if not rename_shape_key_with_drivers(mesh_obj, sk_name, new_name):
+                self.report({'ERROR'},
+                            f"Failed to rename shape key '{sk_name}'")
+                return {'CANCELLED'}
+
+            actions.append(f"renamed '{sk_name}' → '{new_name}'")
+            props.shape_key_name = new_name
+            sk_name = new_name
+
+        if mirrored_sk not in sk.key_blocks:
+            basis = sk.key_blocks.get("Basis")
+            if basis is None:
+                self.report(
+                    {'ERROR'},
+                    "No Basis shape key found — cannot create "
+                    f"'{mirrored_sk}'. Add a Basis key first.",
+                )
+                return {'CANCELLED'}
+            mesh_obj.shape_key_add(name=mirrored_sk, from_mix=False)
+            actions.append(f"created '{mirrored_sk}'")
+
         negate = (props.axis == '0')
         points = []
         for cp in props.control_points:
@@ -678,21 +869,26 @@ class CSK_OT_MirrorDriver(bpy.types.Operator):
             points.append((n, cp.sk_value))
 
         fcurve = create_corrective_driver(
-            props.mesh_object, mirrored_sk, props.armature,
+            mesh_obj, mirrored_sk, props.armature,
             mirrored_bone, props.axis, points,
         )
+        if not fcurve:
+            self.report({'ERROR'}, "Failed to create mirrored driver")
+            return {'CANCELLED'}
 
-        if fcurve:
-            context.view_layer.update()
-            self.report(
-                {'INFO'},
-                f"Mirrored driver: '{mirrored_sk}' on bone "
-                f"'{mirrored_bone}'",
-            )
-            return {'FINISHED'}
+        unmatched = _mirror_shape_key_data(mesh_obj, sk_name, mirrored_sk)
 
-        self.report({'ERROR'}, "Failed to create mirrored driver")
-        return {'CANCELLED'}
+        parts = list(actions)
+        parts.append(f"mirrored to '{mirrored_sk}' on '{mirrored_bone}'")
+        if unmatched > 0:
+            parts.append(
+                f"{unmatched} vertices had no symmetric match")
+            self.report({'WARNING'}, "; ".join(parts))
+        else:
+            self.report({'INFO'}, "; ".join(parts))
+
+        context.view_layer.update()
+        return {'FINISHED'}
 
 
 class CSK_OT_BakeDrivers(bpy.types.Operator):
