@@ -1,3 +1,11 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2024 Paradise Pictures
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
 bl_info = {
     "name": "Corrective Shape Key Drivers",
     "author": "Paradise Pictures",
@@ -9,6 +17,7 @@ bl_info = {
         "(IK-friendly), with bake-to-keyframes for game engine export"
     ),
     "category": "Rigging",
+    "license": "GPL",
 }
 
 import bpy
