@@ -72,7 +72,7 @@ If your bone and shape key both use `.l` / `.r` (or `.L` / `.R`) suffixes, click
 ## Known Limitations
 
 - **Auto Run Python Scripts must be enabled** — Blender blocks driver expressions otherwise. You'll see a warning in the panel if it's off.
-- **The mesh must have existing shape keys** before it can be selected in the picker. Add a Basis key and at least one corrective key first.
+- **The mesh must have shape keys to generate a driver** — you can select any mesh in the picker, but the Shape Key dropdown and Generate Driver button only activate once a Basis key and at least one corrective key exist.
 - **Mirror requires matching suffixes** — both the bone name and shape key name must end in `.l` / `.r` (or `.L` / `.R` or `_l` / `_r`) for the mirror to work.
 
 ---

@@ -61,10 +61,15 @@ class CSK_PG_ControlPoint(bpy.types.PropertyGroup):
 
 
 def _poll_mesh_with_shape_keys(self, obj):
+    return obj.type == 'MESH'
+
+
+def _mesh_has_shape_keys(mesh_obj):
+    """Return True if the mesh has a Basis key plus at least one other."""
     return (
-        obj.type == 'MESH'
-        and obj.data.shape_keys is not None
-        and len(obj.data.shape_keys.key_blocks) > 1
+        mesh_obj is not None
+        and mesh_obj.data.shape_keys is not None
+        and len(mesh_obj.data.shape_keys.key_blocks) > 1
     )
 
 
@@ -523,7 +528,7 @@ class CSK_OT_GenerateDriver(bpy.types.Operator):
     def poll(cls, context):
         props = context.scene.corrective_sk
         return (
-            props.mesh_object is not None
+            _mesh_has_shape_keys(props.mesh_object)
             and props.shape_key_name != ""
             and props.armature is not None
             and props.bone_name != ""
@@ -831,12 +836,18 @@ class CSK_PT_MainPanel(bpy.types.Panel):
         # --- Target Selection ---
         col = layout.column(align=True)
         col.prop(props, "mesh_object")
-        if props.mesh_object and props.mesh_object.data.shape_keys:
-            col.prop_search(
-                props, "shape_key_name",
-                props.mesh_object.data.shape_keys, "key_blocks",
-                text="Shape Key",
-            )
+        if props.mesh_object:
+            if _mesh_has_shape_keys(props.mesh_object):
+                col.prop_search(
+                    props, "shape_key_name",
+                    props.mesh_object.data.shape_keys, "key_blocks",
+                    text="Shape Key",
+                )
+            else:
+                row = col.row()
+                row.alert = True
+                row.label(text="Add shape keys in Properties > Object Data",
+                          icon='INFO')
 
         layout.separator()
         col = layout.column(align=True)
