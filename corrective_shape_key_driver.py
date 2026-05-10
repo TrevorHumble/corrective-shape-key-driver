@@ -9,7 +9,7 @@
 bl_info = {
     "name": "Corrective Shape Key Drivers",
     "author": "Paradise Pictures",
-    "version": (1, 5, 1),
+    "version": (1, 5, 2),
     "blender": (4, 5, 0),
     "location": "View3D > Sidebar > Corrective SK",
     "description": (
@@ -1080,6 +1080,8 @@ class CSK_PT_MainPanel(bpy.types.Panel):
 
         # --- Armature + Bone (top: drives the shape key) ---
         col = layout.column(align=True)
+        col.use_property_split = True
+        col.use_property_decorate = False
         col.prop(props, "armature")
         if props.armature:
             col.prop_search(
@@ -1092,6 +1094,8 @@ class CSK_PT_MainPanel(bpy.types.Panel):
 
         # --- Mesh + Shape Key (or inline Prepare button) ---
         col = layout.column(align=True)
+        col.use_property_split = True
+        col.use_property_decorate = False
         col.prop(props, "mesh_object")
         if props.mesh_object:
             sk = props.mesh_object.data.shape_keys
@@ -1102,8 +1106,10 @@ class CSK_PT_MainPanel(bpy.types.Panel):
             )
 
             if bone_set and not bone_key_exists:
-                # Replace the Shape Key field with a Prepare button.
-                split = col.split(factor=0.4, align=True)
+                # Replace the Shape Key field with a Prepare button,
+                # matching the property_split layout used by the prop rows.
+                row = col.row(align=True)
+                split = row.split(factor=0.4, align=True)
                 split.alignment = 'RIGHT'
                 split.label(text="Shape Key")
                 split.operator(
