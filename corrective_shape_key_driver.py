@@ -18,6 +18,8 @@ bl_info = {
     ),
     "category": "Rigging",
     "license": "GPL",
+    "doc_url": "https://github.com/TrevorHumble/corrective-shape-key-driver#readme",
+    "tracker_url": "https://github.com/TrevorHumble/corrective-shape-key-driver/issues",
 }
 
 import bpy
