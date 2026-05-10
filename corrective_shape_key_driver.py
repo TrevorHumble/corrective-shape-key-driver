@@ -621,7 +621,9 @@ class CSK_OT_MirrorDriver(bpy.types.Operator):
         if len(props.control_points) < 2:
             return False
         mirrored_bone = bpy.utils.flip_name(props.bone_name)
-        return mirrored_bone != props.bone_name
+        mirrored_sk = bpy.utils.flip_name(props.shape_key_name)
+        return (mirrored_bone != props.bone_name
+                and mirrored_sk != props.shape_key_name)
 
     def execute(self, context):
         props = context.scene.corrective_sk
@@ -629,9 +631,25 @@ class CSK_OT_MirrorDriver(bpy.types.Operator):
         mirrored_bone = bpy.utils.flip_name(props.bone_name)
         mirrored_sk = bpy.utils.flip_name(props.shape_key_name)
 
+        if mirrored_bone == props.bone_name:
+            self.report(
+                {'ERROR'},
+                f"Bone '{props.bone_name}' has no mirrored counterpart. "
+                f"Rename it with a .l / .r suffix (e.g. 'arm.l' / 'arm.r').",
+            )
+            return {'CANCELLED'}
+
+        if mirrored_sk == props.shape_key_name:
+            self.report(
+                {'ERROR'},
+                f"Shape key '{props.shape_key_name}' has no mirrored counterpart. "
+                f"Rename it with a .l / .r suffix (e.g. 'corrective.l' / 'corrective.r').",
+            )
+            return {'CANCELLED'}
+
         if props.armature.pose.bones.get(mirrored_bone) is None:
             self.report({'ERROR'},
-                        f"Mirrored bone '{mirrored_bone}' not found")
+                        f"Mirrored bone '{mirrored_bone}' not found in armature")
             return {'CANCELLED'}
 
         sk = props.mesh_object.data.shape_keys
