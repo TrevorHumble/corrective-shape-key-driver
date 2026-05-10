@@ -1,6 +1,6 @@
 # Corrective Shape Key Drivers
 
-**Version 1.3.0** | Blender 4.5+
+**Version 1.4.0** | Blender 4.5+
 
 A Blender addon that creates corrective shape key drivers from evaluated bone positions. Works with IK, FK, and constraints — and includes bake-to-keyframes for game engine export.
 
@@ -15,7 +15,7 @@ A Blender addon that creates corrective shape key drivers from evaluated bone po
 - IK-friendly: reads evaluated (post-constraint) bone position, not rest pose
 - 2-point linear, 3-point quadratic, or 4+ piecewise-linear curve fitting
 - Capture and recapture control points live from the current pose
-- Mirror driver to the opposite side (`.l` ↔ `.r`) in one click
+- Mirror driver to the opposite side (`.l` ↔ `.r`) in one click — automatically creates and names the mirrored shape key if needed, and mirrors vertex offsets
 - Bake all driven shape keys to per-frame keyframes for Unity / Unreal / Godot export
 
 ---
@@ -61,7 +61,7 @@ Add more control points between neutral and full-on for a smoother curve.
 
 ### Mirroring
 
-If your bone and shape key both use `.l` / `.r` (or `.L` / `.R`) suffixes, click **Mirror to Other Side** to duplicate the driver setup to the opposite side automatically.
+Click **Mirror to Other Side** to duplicate the driver setup to the opposite side. The operator automatically creates the mirrored shape key (from Basis) if it doesn't exist, renames unsuffixed shape keys by inferring the side from the bone name, and mirrors the vertex offsets across X. The bone must use `.l` / `.r` (or `.L` / `.R`, `_l` / `_r`, `.left` / `.right`) naming.
 
 ### Game engine export
 
@@ -75,7 +75,7 @@ If your bone and shape key both use `.l` / `.r` (or `.L` / `.R`) suffixes, click
 
 - **Auto Run Python Scripts must be enabled** — Blender blocks driver expressions otherwise. You'll see a warning in the panel if it's off.
 - **The mesh must have shape keys to generate a driver** — you can select any mesh in the picker, but the Shape Key dropdown and Generate Driver button only activate once a Basis key and at least one corrective key exist.
-- **Mirror requires matching suffixes** — both the bone name and shape key name must end in `.l` / `.r` (or `.L` / `.R` or `_l` / `_r`) for the mirror to work.
+- **Mirror requires the bone to have a side suffix** — the bone name must end in `.l` / `.r` (or `.L` / `.R`, `_l` / `_r`, `.left` / `.right`) so the addon knows which mirrored bone to target. The shape key does not need a suffix — the addon will rename it automatically.
 
 ---
 
