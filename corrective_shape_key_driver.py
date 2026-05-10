@@ -9,7 +9,7 @@
 bl_info = {
     "name": "Corrective Shape Key Drivers",
     "author": "Paradise Pictures",
-    "version": (1, 2, 0),
+    "version": (1, 3, 0),
     "blender": (4, 5, 0),
     "location": "View3D > Sidebar > Corrective SK",
     "description": (
