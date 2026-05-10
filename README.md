@@ -1,5 +1,7 @@
 # Corrective Shape Key Drivers
 
+**Version 1.3.0** | Blender 4.5+
+
 A Blender addon that creates corrective shape key drivers from evaluated bone positions. Works with IK, FK, and constraints — and includes bake-to-keyframes for game engine export.
 
 ![Sidebar panel](docs/screenshot.png)
