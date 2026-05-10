@@ -9,12 +9,12 @@
 bl_info = {
     "name": "Corrective Shape Key Drivers",
     "author": "Paradise Pictures",
-    "version": (1, 5, 2),
+    "version": (1, 6, 0),
     "blender": (4, 5, 0),
     "location": "View3D > Sidebar > Corrective SK",
     "description": (
         "Create corrective shape key drivers from evaluated bone positions "
-        "(IK-friendly), with bake-to-keyframes for game engine export"
+        "(IK-friendly)"
     ),
     "category": "Rigging",
     "license": "GPL",
@@ -30,7 +30,6 @@ from bpy.props import (
     EnumProperty,
     PointerProperty,
     CollectionProperty,
-    BoolProperty,
 )
 
 
@@ -268,115 +267,6 @@ def create_corrective_driver(mesh_obj, sk_name, armature, bone_name, axis,
     driver.expression = full_expr
 
     return fcurve
-
-
-# ---------------------------------------------------------------------------
-# Helper: bake shape key drivers to keyframes
-# ---------------------------------------------------------------------------
-
-def bake_shape_key_drivers(mesh_obj, frame_start, frame_end, step=1,
-                           remove_drivers=True):
-    """Bake all driven shape keys on *mesh_obj* to per-frame keyframes.
-
-    This evaluates each driver at every frame in the range and inserts a
-    keyframe on the shape key value, producing an animation that is fully
-    independent of drivers.  After baking, the drivers are optionally
-    removed so the file can be exported to game engines (Unity, Unreal,
-    Godot) that do not support Blender drivers.
-
-    Args:
-        mesh_obj:       The mesh whose shape key drivers to bake.
-        frame_start:    First frame (inclusive).
-        frame_end:      Last frame (inclusive).
-        step:           Frame step (default 1 = every frame).
-        remove_drivers: If ``True``, remove drivers after baking.
-
-    Returns:
-        List of shape key names that were baked, or empty list on failure.
-    """
-    if not mesh_obj or mesh_obj.type != 'MESH':
-        return []
-
-    shape_keys = mesh_obj.data.shape_keys
-    if not shape_keys:
-        return []
-
-    # Find all shape keys that have drivers
-    driven_sk_names = []
-    if shape_keys.animation_data and shape_keys.animation_data.drivers:
-        for fc in shape_keys.animation_data.drivers:
-            # data_path looks like: key_blocks["SomeName"].value
-            if fc.data_path.startswith('key_blocks["'):
-                sk_name = fc.data_path.split('"')[1]
-                if sk_name in shape_keys.key_blocks:
-                    driven_sk_names.append(sk_name)
-
-    if not driven_sk_names:
-        return []
-
-    scene = bpy.context.scene
-    original_frame = scene.frame_current
-
-    # Collect values for every frame
-    # {sk_name: [(frame, value), ...]}
-    baked_data = {name: [] for name in driven_sk_names}
-
-    for frame in range(frame_start, frame_end + 1, step):
-        scene.frame_set(frame)
-        # Force dependency graph evaluation
-        dg = bpy.context.evaluated_depsgraph_get()
-        dg.update()
-
-        for sk_name in driven_sk_names:
-            val = shape_keys.key_blocks[sk_name].value
-            baked_data[sk_name].append((frame, val))
-
-    # Remove drivers first (so we can insert keyframes on the values)
-    if remove_drivers:
-        for sk_name in driven_sk_names:
-            data_path = f'key_blocks["{sk_name}"].value'
-            try:
-                shape_keys.driver_remove(data_path)
-            except TypeError:
-                pass
-
-    # Ensure shape_keys has animation_data for keyframes
-    if not shape_keys.animation_data:
-        shape_keys.animation_data_create()
-    if not shape_keys.animation_data.action:
-        shape_keys.animation_data.action = bpy.data.actions.new(
-            name=f"{mesh_obj.name}_ShapeKeyBake"
-        )
-
-    action = shape_keys.animation_data.action
-
-    # Insert keyframes from baked data
-    for sk_name, frames_values in baked_data.items():
-        data_path = f'key_blocks["{sk_name}"].value'
-
-        # Find or create the FCurve
-        fcurve = action.fcurves.find(data_path)
-        if fcurve is None:
-            fcurve = action.fcurves.new(data_path)
-        else:
-            # Clear existing keyframes
-            while len(fcurve.keyframe_points) > 0:
-                fcurve.keyframe_points.remove(fcurve.keyframe_points[0])
-
-        # Bulk-insert keyframes (much faster than one-by-one)
-        fcurve.keyframe_points.add(len(frames_values))
-        for i, (frame, val) in enumerate(frames_values):
-            kp = fcurve.keyframe_points[i]
-            kp.co = (frame, val)
-            kp.interpolation = 'LINEAR'
-
-        # Update the fcurve
-        fcurve.update()
-
-    # Restore original frame
-    scene.frame_set(original_frame)
-
-    return driven_sk_names
 
 
 # ---------------------------------------------------------------------------
@@ -936,126 +826,6 @@ class CSK_OT_MirrorDriver(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class CSK_OT_BakeDrivers(bpy.types.Operator):
-    bl_idname = "corrective_sk.bake_drivers"
-    bl_label = "Bake to Keyframes"
-    bl_description = (
-        "Bake all driven shape keys on this mesh to per-frame keyframes "
-        "for game engine export (Unity / Unreal / Godot). "
-        "Drivers are removed after baking"
-    )
-    bl_options = {'REGISTER', 'UNDO'}
-
-    frame_start: IntProperty(
-        name="Start Frame",
-        description="First frame to bake",
-        default=1,
-    )
-    frame_end: IntProperty(
-        name="End Frame",
-        description="Last frame to bake",
-        default=250,
-    )
-    step: IntProperty(
-        name="Step",
-        description="Bake every Nth frame (1 = every frame)",
-        default=1,
-        min=1,
-        max=10,
-    )
-    remove_drivers: BoolProperty(
-        name="Remove Drivers After Bake",
-        description=(
-            "Remove drivers after baking so the file is ready for export. "
-            "Disable to keep drivers alongside keyframes"
-        ),
-        default=True,
-    )
-
-    @classmethod
-    def poll(cls, context):
-        props = context.scene.corrective_sk
-        if not props.mesh_object:
-            return False
-        sk = props.mesh_object.data.shape_keys
-        if not sk or not sk.animation_data:
-            return False
-        return bool(sk.animation_data.drivers)
-
-    def invoke(self, context, event):
-        # Pre-fill with scene frame range
-        self.frame_start = context.scene.frame_start
-        self.frame_end = context.scene.frame_end
-        return context.window_manager.invoke_props_dialog(self)
-
-    def draw(self, context):
-        layout = self.layout
-        col = layout.column(align=True)
-        col.prop(self, "frame_start")
-        col.prop(self, "frame_end")
-        col.prop(self, "step")
-        layout.separator()
-        layout.prop(self, "remove_drivers")
-
-    def execute(self, context):
-        props = context.scene.corrective_sk
-
-        if self.frame_end < self.frame_start:
-            self.report({'ERROR'}, "End frame must be >= start frame")
-            return {'CANCELLED'}
-
-        baked = bake_shape_key_drivers(
-            props.mesh_object,
-            self.frame_start,
-            self.frame_end,
-            step=self.step,
-            remove_drivers=self.remove_drivers,
-        )
-
-        if baked:
-            total_frames = (self.frame_end - self.frame_start) // self.step + 1
-            self.report(
-                {'INFO'},
-                f"Baked {len(baked)} shape key(s) over {total_frames} frames: "
-                + ", ".join(baked),
-            )
-            return {'FINISHED'}
-
-        self.report({'WARNING'}, "No driven shape keys found to bake")
-        return {'CANCELLED'}
-
-
-class CSK_OT_ClearBakedKeyframes(bpy.types.Operator):
-    bl_idname = "corrective_sk.clear_baked"
-    bl_label = "Clear Baked Keyframes"
-    bl_description = (
-        "Remove baked shape key keyframes (does not affect drivers)"
-    )
-    bl_options = {'REGISTER', 'UNDO'}
-
-    @classmethod
-    def poll(cls, context):
-        props = context.scene.corrective_sk
-        if not props.mesh_object:
-            return False
-        sk = props.mesh_object.data.shape_keys
-        if not sk or not sk.animation_data or not sk.animation_data.action:
-            return False
-        return bool(sk.animation_data.action.fcurves)
-
-    def execute(self, context):
-        props = context.scene.corrective_sk
-        sk = props.mesh_object.data.shape_keys
-        action = sk.animation_data.action
-
-        count = len(action.fcurves)
-        for fc in list(action.fcurves):
-            action.fcurves.remove(fc)
-
-        self.report({'INFO'}, f"Cleared {count} baked shape key curve(s)")
-        return {'FINISHED'}
-
-
 # ---------------------------------------------------------------------------
 # Panel
 # ---------------------------------------------------------------------------
@@ -1188,27 +958,6 @@ class CSK_PT_MainPanel(bpy.types.Panel):
                 box.label(text=f"Current Value: {val:.4f}",
                           icon='SHAPEKEY_DATA')
 
-        # --- Bake Section ---
-        if props.mesh_object:
-            sk = props.mesh_object.data.shape_keys
-            has_drivers = (sk and sk.animation_data
-                          and sk.animation_data.drivers)
-            has_baked = (sk and sk.animation_data
-                        and sk.animation_data.action
-                        and sk.animation_data.action.fcurves)
-
-            if has_drivers or has_baked:
-                layout.separator()
-                box = layout.box()
-                box.label(text="Game Engine Export", icon='EXPORT')
-                col = box.column(align=True)
-                if has_drivers:
-                    col.operator("corrective_sk.bake_drivers",
-                                 icon='ACTION')
-                if has_baked:
-                    col.operator("corrective_sk.clear_baked",
-                                 icon='CANCEL')
-
 
 # ---------------------------------------------------------------------------
 # Registration
@@ -1225,8 +974,6 @@ classes = (
     CSK_OT_GenerateDriver,
     CSK_OT_RemoveDriver,
     CSK_OT_MirrorDriver,
-    CSK_OT_BakeDrivers,
-    CSK_OT_ClearBakedKeyframes,
     CSK_PT_MainPanel,
 )
 
